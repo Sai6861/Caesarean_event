@@ -1,0 +1,101 @@
+# Caesarean_event
+2017.9.7号剖腹产事件新浪微博评论词云分析
+import jieba
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from PIL import Image
+
+import numpy
+import pymongo
+import time
+from selenium import webdriver
+client = pymongo.MongoClient('localhost', 27017)
+weibo = client['weibo']
+poufuchan = weibo['poufuchan']
+def get_all_comments():
+    phantomjs = 'E:/PhantomJS/bin/phantomjs.exe'
+    dr = webdriver.PhantomJS(executable_path=phantomjs)
+    #模拟登陆
+    login_url = 'https://passport.weibo.cn/signin/login?entry=mweibo&res=wel&wm=3349'
+    account = '你的登录名'
+    password = '你的密码'
+    dr.get(login_url)
+    #phantomjs傲娇，必须得等，不像其他浏览器，需要设置sleep
+    time.sleep(5)
+    dr.find_element_by_id('loginName').clear()
+    dr.find_element_by_id('loginName').send_keys(account)
+    dr.find_element_by_id('loginPassword').clear()
+    dr.find_element_by_id('loginPassword').send_keys(password)
+    print('Please check browser for IC')
+    dr.find_element_by_id('loginAction').click()
+    time.sleep(5)
+    n = 0
+    comment_list = []
+    try:
+        event_url = 'https://m.weibo.cn/status/4148793454461077'
+        time.sleep(5)
+        dr.get(event_url)
+        time.sleep(5)
+        #妈的，用尽一生的指挥才想到这个方法，没想到还没没100%达到效果
+        js1 = 'return document.body.scrollHeight'
+        js2 = 'window.scrollTo(0, document.body.scrollHeight)'
+        old_scroll_height = 0
+        print('processing....')
+        while dr.execute_script(js1) > old_scroll_height:
+            old_scroll_height = dr.execute_script(js1)
+            dr.execute_script(js2)
+            time.sleep(2)
+        comments = dr.find_elements_by_class_name('comment-con')
+        names = dr.find_elements_by_class_name('comment-user-name')
+        likes = dr.find_elements_by_class_name('comment-dz-num')
+        time.sleep(3)
+        for each_one in comments:
+            comment_list.append(each_one)
+        for comment, name, like in zip(comments, names, likes):
+            data = {
+                'name': name.text,
+                'like': like.text,
+                'comment': comment.text
+            }
+            poufuchan.insert(data)
+            n = n + 1
+            print('第{}项爬取完毕'.format(n))
+    except Exception as e:
+        print(str(e))
+
+def word_process():
+    comments_lists = []
+    for i in poufuchan.find():
+        raw_comments = i['comment']
+        comments_lists.append(raw_comments)
+
+    with open('F:/poufuchan.txt', 'w', encoding='utf-8') as f:
+        for each in comments_lists:
+            f.write(each + '\n')
+
+def word_cloud():
+    text= open('F:/poufuchan.txt','r',encoding='utf-8').read()
+    mask = numpy.array((Image.open('C:/Users/Administrator/Desktop/timg.jpg')))
+    word_lists= jieba.cut(text, cut_all=True)
+    word_list=' '.join(word_lists)
+    word_cloud=WordCloud(background_color='black',
+                         mask=mask,
+                         max_words=2000,
+                         font_path='C:/Users/Administrator/Desktop/方正报宋简体.ttf',
+                         random_state=10)
+    rs = word_cloud.generate(word_list)
+    word_cloud.to_file('F:/剖腹产.jpg')
+    plt.imshow(rs)
+    plt.axis('off')
+    plt.figure()
+    plt.imshow(mask,cmap=plt.gray())
+    plt.axis()
+    plt.show()
+
+
+if __name__ == '__main__':
+    get_all_comments()
+    word_process()
+    word_cloud()
+
+
